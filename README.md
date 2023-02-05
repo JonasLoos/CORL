@@ -16,7 +16,8 @@
 
 ```bash
 git clone https://github.com/tinkoff-ai/CORL.git && cd CORL
-pip install -r requirements/requirements_dev.txt
+conda create -n corl python=3.10  # if you want to use conda
+pip install -r requirements/requirements_updated.txt
 
 # alternatively, you could use docker
 docker build -t <image_name> .
