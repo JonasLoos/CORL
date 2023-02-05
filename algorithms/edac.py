@@ -8,6 +8,7 @@ import math
 import os
 import random
 import uuid
+from time import time
 
 import d4rl
 import gym
@@ -22,36 +23,73 @@ import wandb
 
 @dataclass
 class TrainConfig:
-    # wandb params
+    """Configuration"""
+
+    # """ wandb params """
+
+    # wandb project name
     project: str = "CORL"
+    # wandb group name
     group: str = "EDAC-D4RL"
+    # wandb name
     name: str = "EDAC"
-    # model params
+
+    # """ model params """
+
+    # hidden layer dimension
     hidden_dim: int = 256
+    # number of critics
     num_critics: int = 10
+    # ???
     gamma: float = 0.99
+    # ???
     tau: float = 5e-3
+    # ???
     eta: float = 1.0
+    # actor learning rate
     actor_learning_rate: float = 3e-4
+    # critic learning rate
     critic_learning_rate: float = 3e-4
+    # ???
     alpha_learning_rate: float = 3e-4
+    # ???
     max_action: float = 1.0
-    # training params
+
+    # """ training params """
+
+    # buffer size
     buffer_size: int = 1_000_000
+    # environment name
     env_name: str = "halfcheetah-medium-v2"
+    # batch size
     batch_size: int = 256
+    # number of epochs
     num_epochs: int = 3000
+    # updates per epoch
     num_updates_on_epoch: int = 1000
+    # whether to normalize the reward
     normalize_reward: bool = False
-    # evaluation params
+
+    # """ evaluation params """
+
+    # number of runs per evaluation
     eval_episodes: int = 10
+    # evaluation frequency (in epochs)
     eval_every: int = 5
-    # general params
+
+    # """ general params """
+
+    # checkpoint path
     checkpoints_path: Optional[str] = None
+    # ???
     deterministic_torch: bool = False
+    # training seed
     train_seed: int = 10
+    # evaluation seed
     eval_seed: int = 42
+    # ???
     log_every: int = 100
+    # device to use (cuda or cpu)
     device: str = "cpu"
 
     def __post_init__(self):
@@ -147,6 +185,7 @@ class ReplayBuffer:
             raise ValueError(
                 "Replay buffer is smaller than the dataset you are trying to load!"
             )
+        print(f"Loading dataset of size {n_transitions} into replay buffer")
         self._states[:n_transitions] = self._to_tensor(data["observations"])
         self._actions[:n_transitions] = self._to_tensor(data["actions"])
         self._rewards[:n_transitions] = self._to_tensor(data["rewards"][..., None])
@@ -428,7 +467,8 @@ class EDAC:
         return loss
 
     def update(self, batch: TensorBatch) -> Dict[str, float]:
-        state, action, reward, next_state, done = [arr.to(self.device) for arr in batch]
+        state, action, reward, next_state, done = batch
+        # state, action, reward, next_state, done = [arr.to(self.device) for arr in batch]
         # Usually updates are done in the following order: critic -> actor -> alpha
         # But we found that EDAC paper uses reverse (which gives better results)
 
@@ -542,6 +582,8 @@ def modify_reward(dataset, env_name, max_episode_steps=1000):
 
 @pyrallis.wrap()
 def train(config: TrainConfig):
+    start_time = time()
+
     set_seed(config.train_seed, deterministic_torch=config.deterministic_torch)
     wandb_init(asdict(config))
 
@@ -595,6 +637,7 @@ def train(config: TrainConfig):
 
     total_updates = 0.0
     for epoch in trange(config.num_epochs, desc="Training"):
+        epoch_start_time = time()
         # training
         for _ in trange(config.num_updates_on_epoch, desc="Epoch", leave=False):
             batch = buffer.sample(config.batch_size)
@@ -604,9 +647,11 @@ def train(config: TrainConfig):
                 wandb.log({"epoch": epoch, **update_info})
 
             total_updates += 1
+        wandb.log({"epoch": epoch, "time/train": time() - epoch_start_time})
 
         # evaluation
         if epoch % config.eval_every == 0 or epoch == config.num_epochs - 1:
+            eval_start_time = time()
             eval_returns = eval_actor(
                 env=eval_env,
                 actor=actor,
@@ -618,6 +663,7 @@ def train(config: TrainConfig):
                 "eval/reward_mean": np.mean(eval_returns),
                 "eval/reward_std": np.std(eval_returns),
                 "epoch": epoch,
+                "time/eval": (time() - eval_start_time)/config.eval_episodes,
             }
             if hasattr(eval_env, "get_normalized_score"):
                 normalized_score = eval_env.get_normalized_score(eval_returns) * 100.0
@@ -632,6 +678,7 @@ def train(config: TrainConfig):
                     os.path.join(config.checkpoints_path, f"{epoch}.pt"),
                 )
 
+    wandb.log({"time/total": time() - start_time})
     wandb.finish()
 
 
