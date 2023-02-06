@@ -54,6 +54,8 @@ class TrainConfig:
     alpha_learning_rate: float = 3e-4
     # ???
     max_action: float = 1.0
+    # how get the q value estimate from the ensemble of critics (min, softmax)
+    critic_qvalue_reduction: str = "min"
 
     # """ training params """
 
@@ -183,7 +185,8 @@ class ReplayBuffer:
         n_transitions = data["observations"].shape[0]
         if n_transitions > self._buffer_size:
             raise ValueError(
-                "Replay buffer is smaller than the dataset you are trying to load!"
+                "Replay buffer is smaller than the dataset you are trying to load: "
+                f"{self._buffer_size} < {n_transitions}"
             )
         print(f"Loading dataset of size {n_transitions} into replay buffer")
         self._states[:n_transitions] = self._to_tensor(data["observations"])
@@ -326,16 +329,14 @@ class VectorizedCritic(nn.Module):
         self.num_critics = num_critics
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        # [..., batch_size, state_dim + action_dim]
+        # [batch_size, state_dim + action_dim]
         state_action = torch.cat([state, action], dim=-1)
-        if state_action.dim() != 3:
-            assert state_action.dim() == 2
-            # [num_critics, batch_size, state_dim + action_dim]
-            state_action = state_action.unsqueeze(0).repeat_interleave(
-                self.num_critics, dim=0
-            )
-        assert state_action.dim() == 3
-        assert state_action.shape[0] == self.num_critics
+        # assert state_action.dim() == 2, f'{state_action.dim() = } != 2'
+        # [num_critics, batch_size, state_dim + action_dim]
+        state_action = state_action.unsqueeze(0).repeat_interleave(
+            self.num_critics, dim=0
+        )
+        # assert state_action.shape[0] == self.num_critics
         # [num_critics, batch_size]
         q_values = self.critic(state_action).squeeze(-1)
         return q_values
@@ -352,6 +353,7 @@ class EDAC:
         tau: float = 0.005,
         eta: float = 1.0,
         alpha_learning_rate: float = 1e-4,
+        critic_qvalue_reduction: str = "min",
         device: str = "cpu",  # noqa
     ):
         self.device = device
@@ -367,6 +369,21 @@ class EDAC:
         self.tau = tau
         self.gamma = gamma
         self.eta = eta
+            
+        if critic_qvalue_reduction == "min":
+            # take the most pessimistic q-value
+            self._critic_qvalue_reduction = lambda x: x.min(0).values
+        elif critic_qvalue_reduction == "softmax":
+            # use the q-value estimates of all critics scaled by the softmax of their negative values
+            # this values pessimistic q-values more
+            self._critic_qvalue_reduction = lambda x: (x * (-x).softmax()).sum(0)
+            # distribution = np.e**(-q_value_dist+q_value_dist.min(0).values)
+            # distribution = distribution / (distribution.sum(0) + 1e-8)
+            # q_value_estimate = (q_value_dist * distribution).sum(0)
+        else:
+            raise NotImplementedError(
+                f"Unknown parameter for `q_value_reduction`: {self.critic_qvalue_reduction}"
+            )
 
         # adaptive alpha setup
         self.target_entropy = -float(self.actor.action_dim)
@@ -388,13 +405,13 @@ class EDAC:
         action, action_log_prob = self.actor(state, need_log_prob=True)
         q_value_dist = self.critic(state, action)
         assert q_value_dist.shape[0] == self.critic.num_critics
-        q_value_min = q_value_dist.min(0).values
+        q_value_estimate = self._critic_qvalue_reduction(q_value_dist)
         # needed for logging
         q_value_std = q_value_dist.std(0).mean().item()
         batch_entropy = -action_log_prob.mean().item()
 
-        assert action_log_prob.shape == q_value_min.shape
-        loss = (self.alpha * action_log_prob - q_value_min).mean()
+        assert action_log_prob.shape == q_value_estimate.shape
+        loss = (self.alpha * action_log_prob - q_value_estimate).mean()
 
         return loss, batch_entropy, q_value_std
 
@@ -412,8 +429,10 @@ class EDAC:
             .repeat_interleave(num_critics, dim=0)
             .requires_grad_(True)
         )
+        # [num_critics, batch_size, state_dim + action_dim]
+        stateaction = torch.cat([state, action], dim=-1)
         # [num_critics, batch_size]
-        q_ensemble = self.critic(state, action)
+        q_ensemble = self.critic.critic(stateaction).squeeze(-1)
 
         q_action_grad = torch.autograd.grad(
             q_ensemble.sum(), action, retain_graph=True, create_graph=True
@@ -451,7 +470,7 @@ class EDAC:
             next_action, next_action_log_prob = self.actor(
                 next_state, need_log_prob=True
             )
-            q_next = self.target_critic(next_state, next_action).min(0).values
+            q_next = self._critic_qvalue_reduction(self.target_critic(next_state, next_action))
             q_next = q_next - self.alpha * next_action_log_prob
 
             assert q_next.unsqueeze(-1).shape == done.shape == reward.shape
@@ -626,6 +645,7 @@ def train(config: TrainConfig):
         tau=config.tau,
         eta=config.eta,
         alpha_learning_rate=config.alpha_learning_rate,
+        critic_qvalue_reduction=config.critic_qvalue_reduction,
         device=config.device,
     )
     # saving config to the checkpoint
