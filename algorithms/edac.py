@@ -376,10 +376,7 @@ class EDAC:
         elif critic_qvalue_reduction == "softmax":
             # use the q-value estimates of all critics scaled by the softmax of their negative values
             # this values pessimistic q-values more
-            self._critic_qvalue_reduction = lambda x: (x * (-x).softmax()).sum(0)
-            # distribution = np.e**(-q_value_dist+q_value_dist.min(0).values)
-            # distribution = distribution / (distribution.sum(0) + 1e-8)
-            # q_value_estimate = (q_value_dist * distribution).sum(0)
+            self._critic_qvalue_reduction = lambda x: (x * (-x).softmax(0)).sum(0)
         else:
             raise NotImplementedError(
                 f"Unknown parameter for `q_value_reduction`: {self.critic_qvalue_reduction}"
