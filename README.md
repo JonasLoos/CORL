@@ -16,13 +16,22 @@
 
 ```bash
 git clone https://github.com/tinkoff-ai/CORL.git && cd CORL
-conda create -n corl python=3.10  # if you want to use conda
+conda create -n corl python=3.10  # if you want to use a conda env
 pip install -r requirements/requirements_updated.txt
 
 # alternatively, you could use docker
 docker build -t <image_name> .
 docker run gpus=all -it --rm --name <container_name> <image_name>
 ```
+
+Then run an algorithm with `python algorithms/ALGO.py` (replace `ALGO` with the algorithm name to run). Add `--help` to show the available options.
+
+```bash
+# example:
+python algorithms/edac.py --device=cuda --batch_size=2048 --critic_qvalue_reduction=softmax --group=EDAC-SoftmaxCritic --num_epochs=60 --eval_every=1
+```
+
+By default, the results are synced to [Weights & Biases](https://wandb.ai/). This can be disabled with `wandb offline` and enabled again with `wandb online`.
 
 
 ## Algorithms Implemented
