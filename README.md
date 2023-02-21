@@ -16,6 +16,7 @@
 
 ```bash
 git clone https://github.com/tinkoff-ai/CORL.git && cd CORL
+sudo apt install g++  # required for pybullet (TODO: check if this is correct and enough)
 conda create -n corl python=3.10  # if you want to use a conda env
 pip install -r requirements/requirements_updated.txt
 
@@ -27,7 +28,8 @@ docker run gpus=all -it --rm --name <container_name> <image_name>
 Then run an algorithm with `python algorithms/ALGO.py` (replace `ALGO` with the algorithm name to run). Add `--help` to show the available options.
 
 ```bash
-# example:
+conda activate corl
+# example: run edac with some options
 python algorithms/edac.py --device=cuda --batch_size=2048 --critic_qvalue_reduction=softmax --group=EDAC-SoftmaxCritic --num_epochs=60 --eval_every=1
 ```
 
