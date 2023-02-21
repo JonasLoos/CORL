@@ -16,7 +16,7 @@
 
 ```bash
 git clone https://github.com/tinkoff-ai/CORL.git && cd CORL
-sudo apt install g++  # required for pybullet (TODO: check if this is correct and enough)
+sudo apt install build-essential
 conda create -n corl python=3.10  # if you want to use a conda env
 pip install -r requirements/requirements_updated.txt
 
