@@ -14,9 +14,12 @@
 
 ## Getting started
 
+This assumes you are running Ubuntu. First install [mujoco-py](https://github.com/openai/mujoco-py#install-mujoco), i.e. download the [Mujoco binaries](https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz) and extract them to `~/.mujoco/mujoco210`. Then:
+
 ```bash
+sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3  # requirements for mujoco
+sudo apt install build-essential  # for gcc for pybullet
 git clone https://github.com/tinkoff-ai/CORL.git && cd CORL
-sudo apt install build-essential
 conda create -n corl python=3.10  # if you want to use a conda env
 pip install -r requirements/requirements_updated.txt
 
