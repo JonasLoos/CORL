@@ -1,3 +1,5 @@
+This is a fork, with some modifications to edac, of:
+
 # CORL (Clean Offline Reinforcement Learning)
 
 [<img src="https://img.shields.io/badge/license-Apache_2.0-blue">](https://github.com/tinkoff-ai/CORL/blob/main/LICENSE)
